@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Sign-in and the iCloud connection through MyAuth come from the MyCommons
 # building block `access` (icloud_mcp/access/ is a copy, see MyCommons/sync.sh).

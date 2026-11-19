@@ -1,6 +1,6 @@
 [project]
 name = "icloud-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server for your iCloud mail, calendars and contacts, with an app-specific password"
 requires-python = ">=3.12"
 license = { text = "MIT" }
