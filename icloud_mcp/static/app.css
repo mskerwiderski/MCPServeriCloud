@@ -1,0 +1,30 @@
+/* iCloud MCP - app-specific styles on top of msk-ui (static/ui/, a copy of
+   the author's design system). Tokens only: no colour values here. */
+
+/* the connector address, ready to copy */
+.connector-url { width:100%; font-family:var(--mono); font-size:.9rem; resize:none; }
+
+/* iCloud connection state on the account page */
+.status-line { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.2rem 0 .9rem; }
+
+/* the three services, one per line */
+label.check { display:flex; align-items:flex-start; gap:.5rem; margin:.45rem 0; font-weight:400; }
+label.check input { width:auto; margin-top:.2rem; }
+
+/* calendar access: name and choice side by side */
+table.kv td { padding:.3rem .8rem .3rem 0; vertical-align:middle; }
+table.kv select { width:auto; min-width:10rem; }
+
+/* the change log with its undo buttons; scrolls sideways on a phone */
+.table-wrap { overflow-x:auto; }
+table.changes td { padding:.4rem .6rem .4rem 0; vertical-align:middle; }
+table.changes td:first-child { white-space:nowrap; }
+form.inline { display:inline; margin:0; }
+
+/* "sign in as" (MyAuth): clearly visible above every page, as in MyAuth.
+   It takes the sticky top; the header scrolls away under it. */
+.imp-banner { position:sticky; top:0; z-index:101; display:flex; align-items:center;
+  justify-content:center; gap:.75rem; flex-wrap:wrap; padding:.55rem 1rem;
+  background:linear-gradient(var(--warn-weak), var(--warn-weak)), var(--bg);
+  border-bottom:2px solid var(--warn); color:var(--fg); font-weight:600; }
+.imp-banner + header { position:static; }

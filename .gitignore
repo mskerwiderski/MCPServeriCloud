@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.env
+# Mail, calendar and contact exports are personal data: never in the repository
+*.eml
+*.ics
+*.vcf
+# Instance-specific compose settings stay with the operator
+docker-compose.override.yml

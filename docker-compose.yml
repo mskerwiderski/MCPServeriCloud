@@ -1,0 +1,16 @@
+# The hosted server in a container. Settings come from .env (see .env.example
+# and docs/hosted.md). There is no host port: the container sits behind your
+# reverse proxy and next to MyAuth. Put both in one Docker network with a
+# docker-compose.override.yml (example in docs/hosted.md).
+services:
+  mcp-icloud:
+    build: .
+    image: mcp-icloud:latest
+    container_name: mcp-icloud
+    restart: unless-stopped
+    env_file: ./.env
+    volumes:
+      - mcp_icloud_data:/data
+
+volumes:
+  mcp_icloud_data:

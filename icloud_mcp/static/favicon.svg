@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+<defs><linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#7b6cff"/></linearGradient></defs>
+<rect x="4.5" y="4.5" width="55" height="55" rx="15" fill="#0e141d" stroke="url(#brandGrad)" stroke-width="3"/>
+<path d="M21 42h23a8 8 0 0 0 .8-15.96A11 11 0 0 0 23.6 24.5 9 9 0 0 0 21 42Z"
+ fill="#0e141d" stroke="#0bb4a6" stroke-width="3.6" stroke-linejoin="round"/>
+<path d="M25.5 31.5h13v8h-13zM25.5 31.5l6.5 4.6 6.5-4.6" fill="none" stroke="#7b6cff"
+ stroke-width="2.2" stroke-linejoin="round"/></svg>
