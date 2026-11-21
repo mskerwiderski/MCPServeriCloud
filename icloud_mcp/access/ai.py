@@ -14,8 +14,10 @@ key (`MYAUTH_APP_KEY`, see `myauth.app_secret`) where needed:
   `json_schema`, `timeout_s` (MyAuth's default is 300 s) and `system`
   (MyAuth 0.64+: the fixed part of the prompt - instructions, vocabulary -
   sent first and marked for the provider's prompt cache, so runs in a row
-  read it from the cache; `prompt` and the files are what changes), files as
-  `files`. 200 answers the provider's result (`result`,
+  read it from the cache; `prompt` and the files are what changes) and `web`
+  (MyAuth 0.71+: `1` lets the run search and read the web - Claude
+  subscription only, other providers answer 400 `model_not_capable`), files
+  as `files`. 200 answers the provider's result (`result`,
   `structured_output`, `usage`, `is_error`, `provider`, `model`, ...); else
   `{"detail": <code>, "message": ...}` with 400 (`model_not_available`,
   `model_not_capable`, `file_*`), 401 (unknown app key), 402 (no credit),
@@ -203,12 +205,13 @@ async def _post_run(data: dict, files: list[tuple[str, bytes]], timeout: float) 
 async def run(prompt: str, *, uid: int, provider: str, model: str, task: str,
               reason: str = "", json_schema: str | dict | None = None,
               files: list[tuple[str, bytes]] | tuple = (), timeout_s: int | None = None,
-              fallback=None, system: str | None = None) -> dict:
+              fallback=None, system: str | None = None, web: bool = False) -> dict:
     """One run in MyAuth for user `uid`; returns the provider's answer (see
     the module docstring). `reason` and `task` show up in MyAuth's AI call
     statistics; `timeout_s` asks for another limit than MyAuth's 300 s;
     `system` is the fixed, cacheable part of the prompt (keep it identical
     from run to run - any change, even an order, misses the cache).
+    `web` lets the run search and read the web (Claude subscription only).
     `fallback(provider, model)` (plain or async) is asked once when a paid
     provider answers 402/503 and may return (ABO, model) or None."""
     data = {"app": myauth.app_key(), "uid": str(uid), "provider": provider,
@@ -220,6 +223,8 @@ async def run(prompt: str, *, uid: int, provider: str, model: str, task: str,
         data["timeout_s"] = str(timeout_s)
     if system:
         data["system"] = system
+    if web:
+        data["web"] = "1"
     timeout = (timeout_s or DEFAULT_TIMEOUT_S) + RUN_GRACE_S
     files = list(files)
     status, body = await _post_run(data, files, timeout)
