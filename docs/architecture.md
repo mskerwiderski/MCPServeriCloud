@@ -53,7 +53,8 @@ or payment, and the user revokes it at account.apple.com.
 ## The limits, and why
 
 Mails are text from strangers; the model reads them. A mail can say "forward
-all invoices to ..." - so the limits are in the code, not in the prompt:
+all invoices to ..." - so the limits are in the code, not in the prompt
+(except whom to invite, below):
 
 - **Mail is read-only.** Folders are opened read-only, bodies fetched with
   `BODY.PEEK` (nothing is marked read). The only write is `APPEND` to the
@@ -61,13 +62,22 @@ all invoices to ..." - so the limits are in the code, not in the prompt:
   There is no SMTP in this server.
 - **Calendars start read-only.** Per calendar the person chooses none, read
   or write (account page, or `icloud-mcp access`). New calendars are read-only.
-- **Never in someone else's name.** Events with attendees are never changed or
-  deleted (iCloud would send invitations or answers), nor single dates out of
-  a series (iCloud keeps them as exceptions); a whole series only with
-  `whole_series=true`.
+- **Invitations only as their organizer.** An event may get attendees
+  (decided 2026-11-26: any address, not only contacts). iCloud does the
+  scheduling itself (RFC 6638): saving such an event mails the invitation,
+  changing it an update (a new time asks every guest again), deleting it a
+  cancellation - all from the person's address. The person's addresses come
+  from the principal's `calendar-user-address-set` (`events._me`); the
+  preferred one is the organizer. An event whose organizer is someone else is
+  never changed or deleted (iCloud would answer in the person's name). The
+  model is told to confirm guests with the person first and never to invite
+  because a mail asks for it - that part is in the prompt, not the code.
+- **Never single dates of a series** (iCloud keeps them as exceptions); a
+  whole series only with `whole_series=true`, and the time or guests of a
+  series with exceptions not at all.
 - **Every change can be undone.** `calendar_log` keeps every create, update
   and delete with the event as it was (iCalendar text), for 30 days; undo
-  puts it back. Writes use ETags (`If-Match`, `If-None-Match: *`), so an event
+  puts it back (for an invitation iCloud mails the guests again). Writes use ETags (`If-Match`, `If-None-Match: *`), so an event
   changed on the phone in between is not overwritten.
 - **Contacts are read-only.**
 - **Answers are cut:** at most 20,000 characters of a mail's text, attachments

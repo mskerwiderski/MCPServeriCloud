@@ -27,14 +27,17 @@ sends it as a literal.
 | Tool | Parameters | Answer |
 |---|---|---|
 | `calendar_list` | - | `calendars: [{id, name, access}]` (read or write; calendars set to none are left out) |
-| `calendar_events` | `start`, `end` (default: one day), `calendar_id` | `from, to, events: [{calendar_id, calendar, event_id, title, start, end, all_day, location, notes, series, with_attendees}], cut` |
-| `calendar_create` | `calendar_id`, `title`, `start`, `end` (default one hour / one day), `all_day`, `location`, `notes`, `alarm_minutes`, `repeat` (RRULE) | `created: <event>` |
-| `calendar_update` | `calendar_id`, `event_id`, and only what changes: `title`, `start` (keeps the length), `end`, `all_day`, `location`, `notes` (empty removes), `whole_series` | `updated: <event>` |
+| `calendar_events` | `start`, `end` (default: one day), `calendar_id` | `from, to, events: [{calendar_id, calendar, event_id, title, start, end, all_day, location, notes, series, with_attendees, organizer, attendees: [{email, name, answer}]}], cut` (organizer and attendees only with attendees; answer: accepted, declined, tentative, needs-action) |
+| `calendar_create` | `calendar_id`, `title`, `start`, `end` (default one hour / one day), `all_day`, `location`, `notes`, `alarm_minutes`, `repeat` (RRULE), `attendees` (e-mail addresses, `Name <address>` allowed, at most 50) | `created: <event>`, `note` with attendees |
+| `calendar_update` | `calendar_id`, `event_id`, and only what changes: `title`, `start` (keeps the length), `end`, `all_day`, `location`, `notes` (empty removes), `whole_series`, `attendees` (the complete new list; `[]` removes all) | `updated: <event>`, `note` with attendees |
 | `calendar_delete` | `calendar_id`, `event_id`, `whole_series` | `deleted, note` |
 
-Writing needs write access to that calendar (account page). Events with
-attendees and single dates of a series are never changed; a series only as a
-whole. Every change can be undone on the account page (30 days).
+Writing needs write access to that calendar (account page). With attendees
+the person is the organizer and iCloud mails invitations, updates (a new time
+asks every guest again; guests who stay keep their answer) and cancellations
+in the person's name. Invitations from someone else and single dates of a
+series are never changed; a series only as a whole. Every change can be
+undone on the account page (30 days).
 
 ## Contacts
 

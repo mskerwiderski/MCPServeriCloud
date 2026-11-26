@@ -258,9 +258,10 @@ async def _calendars_card(uid: int, state: dict) -> str:
                     f' aria-label="Access to {esc(cal["name"])}">{options}</select></td></tr>')
     table = (f'<table class="kv"><tbody>{"".join(rows)}</tbody></table>' if rows else
              '<p class="muted">No calendars found.</p>')
-    return f"""{error}<p class="muted">New calendars start as read-only. Events with
-attendees and single dates out of a series are never changed - that would send
-invitations or answers in your name.</p>
+    return f"""{error}<p class="muted">New calendars start as read-only. In a calendar
+open for writing, Claude can also invite people: iCloud mails the invitation,
+updates and cancellations in your name. Invitations from others and single
+dates out of a series are never changed.</p>
 <form method="post" action="/account/calendars">{table}
 <div class="actions"><button class="btn-ghost" name="do" value="save">Save</button>
 <button class="btn-ghost" name="do" value="refresh">Read calendars again</button></div></form>"""

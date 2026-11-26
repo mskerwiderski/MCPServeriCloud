@@ -26,8 +26,9 @@ here. Examples use placeholders such as `https://mcp.example.com/icloud`.
 - **The limits are in the code, not in the prompt.** Mail: folders opened
   read-only, `BODY.PEEK`, the only write is `APPEND` to Drafts - never add
   sending, deleting, moving or flagging. Calendars: write only with access
-  `write`, never events with attendees or single dates of a series, every
-  change through `events._log` with the event as it was. Contacts: read only.
+  `write`, invitations only as their organizer (the person's addresses from
+  `events._me`), never invitations from someone else or single dates of a
+  series, every change through `events._log` with the event as it was. Contacts: read only.
   A new write path needs the person's explicit decision first.
 - **Nothing from iCloud on disk.** No mail, event or contact in the database
   or the logs (httpx is set to WARNING: URLs carry ids). The contacts cache is

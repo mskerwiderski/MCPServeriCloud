@@ -10,6 +10,7 @@ password**, never your Apple ID password.
 You:  What did the Stadtwerke write last week?
 You:  What is on my calendar on Friday?
 You:  Put the dentist on Tuesday at 2 pm into my private calendar.
+You:  Invite Max and Lena to a run on Saturday at 9. Who has accepted?
 You:  Draft a reply to Max: Saturday works for me.
 You:  What is Lena's mobile number? Whose birthday is coming up?
 ```
@@ -19,7 +20,7 @@ What it can and cannot do:
 | | Can | Cannot |
 |---|---|---|
 | **Mail** (IMAP) | list folders, search, read (without marking anything read), save drafts | send, delete, move, flag |
-| **Calendars** (CalDAV) | list events (series expanded); create, change, delete events **in calendars you opened for writing** - every change logged and undoable | change events with attendees (that would send invitations or answers in your name) or single dates of a series |
+| **Calendars** (CalDAV) | list events (series expanded) with attendees and their answers; create, change, delete events **in calendars you opened for writing** - every change logged and undoable; invite people (iCloud mails the invitation, updates and cancellations in your name) | change or answer invitations from someone else, or single dates of a series |
 | **Contacts** (CardDAV) | search, read, upcoming birthdays | change anything |
 
 Each service can be switched off. Reminders and Notes are not there: Apple

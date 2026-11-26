@@ -103,7 +103,13 @@ class FakeCalDAV:
             "/123/calendars/family/essen.ics": (ics("essen", "Essen bei Oma", "20261111T180000",
                                                     "20261111T210000",
                                                     "ORGANIZER:mailto:oma@icloud.example\r\n"
-                                                    f"ATTENDEE:mailto:{EMAIL}\r\n"), '"3"')}
+                                                    f"ATTENDEE:mailto:{EMAIL}\r\n"), '"3"'),
+            "/123/calendars/family/kino.ics": (ics("kino", "Kino", "20261113T200000",
+                                                   "20261113T220000",
+                                                   "ORGANIZER;CN=Anja Muster:mailto:anja@muster.example\r\n"
+                                                   "ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:anja@muster.example\r\n"
+                                                   "ATTENDEE;CN=Max Muster;PARTSTAT=ACCEPTED;RSVP=TRUE:mailto:max@icloud.example\r\n"
+                                                   "ATTENDEE;CN=Lena;PARTSTAT=DECLINED:mailto:lena@muster.example\r\n"), '"4"')}
         self.etag = 10
         self.propfinds = 0
 
@@ -126,7 +132,13 @@ class FakeCalDAV:
             return self._ms([("/", "<d:current-user-principal><d:href>/123/principal/</d:href>"
                                    "</d:current-user-principal>")])
         if m == "PROPFIND" and path == "/123/principal/":
-            return self._ms([(path, f"<c:calendar-home-set><d:href>{HOME}</d:href></c:calendar-home-set>")])
+            return self._ms([(path, f"<c:calendar-home-set><d:href>{HOME}</d:href></c:calendar-home-set>"
+                                    "<d:displayname>Anja Muster</d:displayname>"
+                                    "<c:calendar-user-address-set>"
+                                    "<d:href>urn:uuid:0000-1111</d:href>"
+                                    f"<d:href>mailto:{EMAIL}</d:href>"
+                                    '<d:href preferred="1">mailto:anja@muster.example</d:href>'
+                                    "</c:calendar-user-address-set>")])
         if m == "PROPFIND" and path == "/123/calendars/":
             rows = [(path, "<d:resourcetype><d:collection/></d:resourcetype>")]
             for key, (name, comp) in self.CALS.items():

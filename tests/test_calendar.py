@@ -1,7 +1,7 @@
 """Calendars (icloud_mcp/events.py): the calendars with their access, events
-with series expanded, writing only where allowed, never events with attendees
-or single dates of a series, and undo from the change log. CalDAV faked
-(fake_icloud.FakeCalDAV)."""
+with series expanded, writing only where allowed, invitations only as their
+organizer, never single dates of a series, and undo from the change log.
+CalDAV faked (fake_icloud.FakeCalDAV)."""
 
 import httpx
 import pytest
@@ -39,10 +39,11 @@ def test_events_with_a_series_expanded(conn, ic):  # noqa: F811
     out = events.list_events(conn, "2026-11-09", "2026-11-17")            # finds the calendars
     seen = [(e["title"], e["start"]) for e in out["events"]]
     assert seen == [("Schwimmen", "2026-11-09T07:00+01:00"), ("Zahnarzt", "2026-11-10T14:00+01:00"),
-                    ("Essen bei Oma", "2026-11-11T18:00+01:00"),
+                    ("Essen bei Oma", "2026-11-11T18:00+01:00"), ("Kino", "2026-11-13T20:00+01:00"),
                     ("Schwimmen", "2026-11-16T07:00+01:00")]
     swim, dentist, dinner = out["events"][0], out["events"][1], out["events"][2]
     assert swim["series"] and not dentist["series"] and dinner["with_attendees"]
+    assert dinner["organizer"] == "oma@icloud.example" and "attendees" not in dentist
     assert dentist["event_id"] == "zahnarzt.ics" and dentist["calendar"] == "Privat"
     store.set_calendar_access(conn.uid, _calendar_id(conn.uid, "Familie"), "none")
     assert events.list_events(conn, "2026-11-11", "2026-11-12")["events"] == []
@@ -102,7 +103,7 @@ def test_create_update_delete_and_undo(conn, ic):  # noqa: F811
         events.restore(conn, log[0])                    # the dentist is back already
 
 
-def test_series_only_as_a_whole_and_never_events_with_attendees(conn, ic):  # noqa: F811
+def test_series_only_as_a_whole_and_never_invitations_from_others(conn, ic):  # noqa: F811
     cal = _allow_writing(conn)
     with pytest.raises(IcloudError, match="whole_series"):
         events.delete(conn, cal, "schwimmen.ics")
@@ -110,8 +111,85 @@ def test_series_only_as_a_whole_and_never_events_with_attendees(conn, ic):  # no
     assert out["updated"]["series"]
     assert "RRULE" in ic.dav.objects["/123/calendars/home/schwimmen.ics"][0]
     family = _allow_writing(conn, "Familie")
-    with pytest.raises(IcloudError, match="attendees"):
-        events.update(conn, family, "essen.ics", title="x")
+    before = ic.dav.objects["/123/calendars/family/essen.ics"]
+    for change in (lambda: events.update(conn, family, "essen.ics", title="x"),
+                   lambda: events.update(conn, family, "essen.ics", attendees=[]),
+                   lambda: events.delete(conn, family, "essen.ics")):
+        with pytest.raises(IcloudError, match="invitation from oma@icloud.example"):
+            change()
+    assert ic.dav.objects["/123/calendars/family/essen.ics"] == before
+
+
+def _event(fakes, path):
+    return Calendar.from_ical(fakes.dav.objects[path][0]).walk("VEVENT")[0]
+
+
+def _guests(event):
+    found = event.get("ATTENDEE")
+    found = found if isinstance(found, list) else [found]
+    return {str(a)[7:]: str(a.params.get("PARTSTAT")) for a in found}
+
+
+def test_invite_from_the_preferred_address(conn, ic):  # noqa: F811
+    cal = _allow_writing(conn)
+    out = events.create(conn, cal, "Laufen", "2026-11-14T09:00",
+                        attendees=["Max Muster <max@icloud.example>", "lena@muster.example",
+                                   "MAX@icloud.example", f"mailto:{conn.address}"])
+    assert "invitations" in out["note"]
+    assert out["created"]["organizer"] == "anja@muster.example"
+    assert [(a["email"], a["answer"]) for a in out["created"]["attendees"]] == [
+        ("anja@muster.example", "accepted"), ("max@icloud.example", "needs-action"),
+        ("lena@muster.example", "needs-action")]               # each once, never the person twice
+    event = _event(ic, "/123/calendars/home/" + out["created"]["event_id"])
+    assert str(event["ORGANIZER"]) == "mailto:anja@muster.example"
+    assert event["ORGANIZER"].params["CN"] == "Anja Muster"
+    max_ = next(a for a in event["ATTENDEE"] if "max@" in str(a))
+    assert max_.params["CN"] == "Max Muster" and max_.params["RSVP"] == "TRUE"
+
+    for bad in (["nobody"], ["max@icloud.example, lena"], [f"g{i}@x.example" for i in range(51)]):
+        with pytest.raises(IcloudError, match="attendees"):
+            events.create(conn, cal, "x", "2026-11-14T09:00", attendees=bad)
+    plain = events.create(conn, cal, "Allein", "2026-11-14T12:00", attendees=[])
+    assert "ATTENDEE" not in ic.dav.objects["/123/calendars/home/" + plain["created"]["event_id"]][0]
+
+
+def test_change_and_cancel_own_invitations(conn, ic):  # noqa: F811
+    family = _allow_writing(conn, "Familie")
+    path = "/123/calendars/family/kino.ics"
+    listed = next(e for e in events.list_events(conn, "2026-11-13")["events"] if e["title"] == "Kino")
+    assert listed["organizer"] == "anja@muster.example"
+    assert {a["email"]: a["answer"] for a in listed["attendees"]}["lena@muster.example"] == "declined"
+
+    # new guests: Max keeps his answer, Lena is dropped, Paul is invited
+    out = events.update(conn, family, "kino.ics",
+                        attendees=["max@icloud.example", "Paul <paul@muster.example>"])
+    assert "update" in out["note"]
+    assert _guests(_event(ic, path)) == {"anja@muster.example": "ACCEPTED",
+                                         "max@icloud.example": "ACCEPTED",
+                                         "paul@muster.example": "NEEDS-ACTION"}
+    assert _event(ic, path)["SEQUENCE"] == 1
+
+    # a new time asks every guest again, the organizer stays accepted
+    events.update(conn, family, "kino.ics", start="2026-11-13T20:30")
+    assert _guests(_event(ic, path)) == {"anja@muster.example": "ACCEPTED",
+                                         "max@icloud.example": "NEEDS-ACTION",
+                                         "paul@muster.example": "NEEDS-ACTION"}
+
+    # no guests: a private event again
+    events.update(conn, family, "kino.ics", attendees=[])
+    assert "ATTENDEE" not in _event(ic, path) and "ORGANIZER" not in _event(ic, path)
+
+    # undo brings the guests back; deleting the invitation cancels it
+    events.restore(conn, store.changes(conn.uid)[0])
+    assert "paul@muster.example" in _guests(_event(ic, path))
+    out = events.delete(conn, family, "kino.ics")
+    assert "cancellation" in out["note"] and path not in ic.dav.objects
+
+    # a plain event gets guests later
+    cal = _allow_writing(conn)
+    events.update(conn, cal, "zahnarzt.ics", attendees=["max@icloud.example"])
+    assert set(_guests(_event(ic, "/123/calendars/home/zahnarzt.ics"))) == {
+        "anja@muster.example", "max@icloud.example"}
 
 
 def test_events_only_inside_their_calendar(conn, ic):  # noqa: F811
