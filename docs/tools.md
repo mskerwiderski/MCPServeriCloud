@@ -28,7 +28,7 @@ sends it as a literal.
 |---|---|---|
 | `calendar_list` | - | `calendars: [{id, name, access}]` (read or write; calendars set to none are left out) |
 | `calendar_events` | `start`, `end` (default: one day), `calendar_id` | `from, to, events: [{calendar_id, calendar, event_id, title, start, end, all_day, location, notes, series, with_attendees, organizer, attendees: [{email, name, answer}]}], cut` (organizer and attendees only with attendees; answer: accepted, declined, tentative, needs-action) |
-| `calendar_create` | `calendar_id`, `title`, `start`, `end` (default one hour / one day), `all_day`, `location`, `notes`, `alarm_minutes`, `repeat` (RRULE), `attendees` (e-mail addresses, `Name <address>` allowed, at most 50) | `created: <event>`, `note` with attendees |
+| `calendar_create` | `calendar_id`, `title`, `start`, `end` (default one hour / one day), `all_day`, `location`, `notes`, `alarm_minutes`, `repeat` (RRULE), `attendees` (e-mail addresses, `Name <address>` allowed - without a name the one in the contacts, at most 50) | `created: <event>`, `note` with attendees |
 | `calendar_update` | `calendar_id`, `event_id`, and only what changes: `title`, `start` (keeps the length), `end`, `all_day`, `location`, `notes` (empty removes), `whole_series`, `attendees` (the complete new list; `[]` removes all) | `updated: <event>`, `note` with attendees |
 | `calendar_delete` | `calendar_id`, `event_id`, `whole_series` | `deleted, note` |
 

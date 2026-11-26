@@ -68,7 +68,11 @@ all invoices to ..." - so the limits are in the code, not in the prompt
   changing it an update (a new time asks every guest again), deleting it a
   cancellation - all from the person's address. The person's addresses come
   from the principal's `calendar-user-address-set` (`events._me`); the
-  preferred one is the organizer. An event whose organizer is someone else is
+  preferred one is the organizer. That set also holds principal paths: once
+  iCloud has scheduled an event it keeps ORGANIZER (and the person's own
+  ATTENDEE) as `/<id>/principal/` with the mail address in `EMAIL`, so an
+  address is compared in every form it has (`events._keys`). A guest given
+  without a name gets the one from the contacts, when they are switched on. An event whose organizer is someone else is
   never changed or deleted (iCloud would answer in the person's name). The
   model is told to confirm guests with the person first and never to invite
   because a mail asks for it - that part is in the prompt, not the code.

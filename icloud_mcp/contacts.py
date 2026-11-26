@@ -278,6 +278,18 @@ def parse(text: str, href: str = "") -> dict | None:
 
 # ---------- the tools' functions ----------
 
+def names_by_email(conn: Conn) -> dict[str, str]:
+    """{address in lower case: name} over all contacts - the name an invitation
+    gives a guest (events._named). A contact named only by its address is left out."""
+    out: dict[str, str] = {}
+    for card in _all(conn):
+        for e in card.get("emails", []):
+            address = e["value"].strip().lower()
+            if card["name"].lower() != address:
+                out.setdefault(address, card["name"])
+    return out
+
+
 def _digits(phone: str) -> str:
     """A phone number as digits, +49 / 0049 as the German 0."""
     d = re.sub(r"\D", "", phone)

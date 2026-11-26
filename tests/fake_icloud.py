@@ -4,6 +4,7 @@ over from Ash's tests. Everything here is made up (the family "Muster")."""
 
 import base64
 import imaplib
+import re
 from email.message import EmailMessage
 
 import httpx
@@ -12,6 +13,15 @@ import pytest
 from conftest import EMAIL, PASSWORD
 
 HOME = "https://p01-caldav.icloud.com:443/123/calendars/"
+SCHEDULER = "/aBc-123_xyz/principal/"       # what iCloud puts in place of the organizer's mailto:
+
+
+def scheduled(text):
+    """What iCloud does to an event it schedules: the organizer's own mailto:
+    (in ORGANIZER and ATTENDEE) becomes a principal path, the address moves to EMAIL."""
+    text = re.sub(r"\r?\n[ \t]", "", text)
+    return re.sub(r"^((?:ORGANIZER|ATTENDEE)[^:\r\n]*):mailto:anja@muster\.example",
+                  rf"\1;EMAIL=anja@muster.example:{SCHEDULER}", text, flags=re.M)
 
 
 def _mail(subject, sender, body, msgid, html=False, attachment=False):
@@ -135,6 +145,8 @@ class FakeCalDAV:
             return self._ms([(path, f"<c:calendar-home-set><d:href>{HOME}</d:href></c:calendar-home-set>"
                                     "<d:displayname>Anja Muster</d:displayname>"
                                     "<c:calendar-user-address-set>"
+                                    "<d:href>/123/principal</d:href>"
+                                    f"<d:href>{SCHEDULER}</d:href>"
                                     "<d:href>urn:uuid:0000-1111</d:href>"
                                     f"<d:href>mailto:{EMAIL}</d:href>"
                                     '<d:href preferred="1">mailto:anja@muster.example</d:href>'
@@ -164,7 +176,7 @@ class FakeCalDAV:
             if match and self.objects.get(path, (None, None))[1] != match:
                 return httpx.Response(412)
             self.etag += 1
-            self.objects[path] = (request.content.decode(), f'"{self.etag}"')
+            self.objects[path] = (scheduled(request.content.decode()), f'"{self.etag}"')
             return httpx.Response(201)
         if m == "DELETE":
             match = request.headers.get("if-match")

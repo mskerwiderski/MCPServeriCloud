@@ -11,7 +11,12 @@ saved, deleted or changed, iCloud mails the invitation, the update or the
 cancellation in the person's name. So events the person organized can be
 changed and deleted here; invitations from someone else never (a change would
 send answers in the person's name). Whose addresses are the person's own,
-iCloud says in the principal's calendar-user-address-set (`_me`).
+iCloud says in the principal's calendar-user-address-set (`_me`): the mail
+addresses and aliases, but also principal paths - once iCloud has scheduled
+an event it rewrites ORGANIZER (and the person's own ATTENDEE) to such a path
+(`/<id>/principal/`) with the mail address only in the EMAIL parameter. So an
+address is compared by every form it has (`_keys`), and shown by its mail
+address (`_email`), in reading and writing alike.
 
 Never touched either: single dates out of a series (iCloud keeps them as
 exceptions) - the model is told to leave those to the calendar app. A series
@@ -114,20 +119,21 @@ def discover(conn: Conn) -> str:
 def _me(c: httpx.Client, conn: Conn) -> dict:
     """The person as organizer: {address, name, all} - the address invitations
     go out from (iCloud's preferred one, else the Apple ID, else the first),
-    the name on the principal, and every address that is the person's own
-    (lower case, without mailto:)."""
-    _, prop = _principal(c, "<d:displayname/><c:calendar-user-address-set/>")
-    hrefs = prop.findall("c:calendar-user-address-set/d:href", NS)
-    mails = [(h.text or "").strip()[7:] for h in hrefs
-             if (h.text or "").strip().lower().startswith("mailto:")]
+    the name on the principal, and every form of the person's own addresses
+    (`_key`: mail addresses, principal paths, urn:uuid), the principal itself
+    included."""
+    principal, prop = _principal(c, "<d:displayname/><c:calendar-user-address-set/>")
+    hrefs = [(h.text or "").strip() for h in prop.findall("c:calendar-user-address-set/d:href", NS)]
+    preferred = [(h.text or "").strip() for h in prop.findall("c:calendar-user-address-set/d:href", NS)
+                 if h.get("preferred") == "1"]
+    mails = [_addr(h) for h in hrefs if h.lower().startswith("mailto:")]
     if not mails:
         raise IcloudError("iCloud Calendar did not say which address invitations go out from.")
-    preferred = [(h.text or "").strip()[7:] for h in hrefs
-                 if h.get("preferred") == "1" and (h.text or "").strip().lower().startswith("mailto:")]
+    first = [_addr(h) for h in preferred if h.lower().startswith("mailto:")]
     own = [m for m in mails if m.lower() == conn.address.lower()]
-    return {"address": (preferred or own or mails)[0],
+    return {"address": (first or own or mails)[0],
             "name": prop.findtext("d:displayname", "", NS).strip(),
-            "all": {m.lower() for m in mails}}
+            "all": {_key(h) for h in hrefs + [principal, f"mailto:{conn.address}"] if h}}
 
 
 def calendars(conn: Conn, home: str) -> list[dict]:
@@ -255,8 +261,8 @@ def _occurrence(o, cal: dict, event_id: str, series: bool, conn: Conn) -> dict:
            "all_day": not isinstance(start, datetime), "location": str(o.get("LOCATION", "")),
            "notes": notes[:MAX_NOTES], "series": series, "with_attendees": "ATTENDEE" in o}
     if "ATTENDEE" in o:
-        out["organizer"] = _addr(o.get("ORGANIZER", ""))
-        out["attendees"] = [{"email": _addr(a), "name": str(a.params.get("CN", "")),
+        out["organizer"] = _email(o.get("ORGANIZER"))
+        out["attendees"] = [{"email": _email(a), "name": str(a.params.get("CN", "")),
                              "answer": str(a.params.get("PARTSTAT", "NEEDS-ACTION")).lower()}
                             for a in _all(o, "ATTENDEE")]
     return out
@@ -336,9 +342,9 @@ def _master(c: httpx.Client, conn: Conn, parsed: Calendar, whole_series: bool):
     if any("ATTENDEE" in v or "ORGANIZER" in v for v in vevents):
         me = _me(c, conn)
         for v in vevents:
-            organizer = _addr(v.get("ORGANIZER", ""))
-            if organizer.lower() not in me["all"]:
-                raise IcloudError(f"This is an invitation from {organizer or 'someone else'} - "
+            if not _mine(v.get("ORGANIZER"), me):
+                organizer = _email(v.get("ORGANIZER")) or "someone else"
+                raise IcloudError(f"This is an invitation from {organizer} - "
                                   "a change would send an answer in the person's name. Please "
                                   "use the Calendar app.")
     master = next((v for v in vevents if "RECURRENCE-ID" not in v), vevents[0])
@@ -355,6 +361,44 @@ def _addr(value) -> str:
     """mailto:Max@Example.org -> Max@Example.org"""
     text = str(value or "").strip()
     return text[7:] if text.lower().startswith("mailto:") else text
+
+
+def _key(value) -> str:
+    """One form of an address, comparable: mailto:max@example.org (lower
+    case), a principal as its path without the last slash (/123/principal),
+    anything else as it is."""
+    text = str(value or "").strip()
+    if text.lower().startswith("mailto:"):
+        return text.lower()
+    if text.lower().startswith(("http://", "https://")):
+        text = urlsplit(text).path
+    return text.rstrip("/") if text.startswith("/") else text
+
+
+def _keys(prop) -> set[str]:
+    """Every form of an ORGANIZER or ATTENDEE: its value and its EMAIL parameter."""
+    if prop is None:
+        return set()
+    keys = {_key(prop)}
+    email = str(getattr(prop, "params", {}).get("EMAIL", "")).strip()
+    if email:
+        keys.add(_key(f"mailto:{email}"))
+    return keys - {""}
+
+
+def _mine(prop, me: dict) -> bool:
+    return bool(_keys(prop) & me["all"])
+
+
+def _email(prop) -> str:
+    """The mail address of an ORGANIZER or ATTENDEE, also when iCloud has put
+    a principal path in its place (then it is in EMAIL)."""
+    if prop is None:
+        return ""
+    text = str(prop).strip()
+    if text.lower().startswith("mailto:"):
+        return text[7:]
+    return str(getattr(prop, "params", {}).get("EMAIL", "")).strip() or text
 
 
 def _all(component, name: str) -> list:
@@ -390,14 +434,17 @@ def _invite(event, me: dict, wanted: list[tuple[str, str]]) -> None:
     """Make `wanted` the guest list of `event`, with the person as organizer
     (and, as Apple's apps do, as the first attendee, accepted). Guests who
     stay keep their answer; an empty list makes it a private event again."""
-    old = {_addr(a).lower(): a for a in _all(event, "ATTENDEE")}
+    attendees = _all(event, "ATTENDEE")
+    own = next((a for a in attendees if _mine(a, me)), None)
+    old = {_email(a).lower(): a for a in attendees if a is not own}
+    organizer = event.get("ORGANIZER")
     event.pop("ATTENDEE", None)
     event.pop("ORGANIZER", None)
-    wanted = [(a, n) for a, n in wanted if a.lower() not in me["all"]]
+    wanted = [(a, n) for a, n in wanted if _key(f"mailto:{a}") not in me["all"]]
     if not wanted:
         return
-    event.add("ORGANIZER", _address(me["address"], me["name"]))
-    own = next((old[k] for k in old if k in me["all"]), None)
+    event.add("ORGANIZER", organizer if _mine(organizer, me) else
+              _address(me["address"], me["name"]))
     event.add("ATTENDEE", own or _address(me["address"], me["name"], CUTYPE="INDIVIDUAL",
                                           ROLE="CHAIR", PARTSTAT="ACCEPTED"))
     for address, name in wanted:
@@ -406,10 +453,23 @@ def _invite(event, me: dict, wanted: list[tuple[str, str]]) -> None:
             PARTSTAT="NEEDS-ACTION", RSVP="TRUE"))
 
 
+def _named(conn: Conn, guests: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Guests given without a name get the one in the person's contacts (when
+    the contacts are switched on; a contacts failure only leaves the name out)."""
+    if not guests or all(n for _, n in guests) or not users.services(conn.uid).get("contacts"):
+        return guests
+    from . import contacts
+    try:
+        names = contacts.names_by_email(conn)
+    except IcloudError:
+        return guests
+    return [(a, n or names.get(a.lower(), "")) for a, n in guests]
+
+
 def _ask_again(event, me: dict) -> None:
     """A new time: every guest is asked again, as Apple's apps do."""
     for a in _all(event, "ATTENDEE"):
-        if _addr(a).lower() not in me["all"]:
+        if not _mine(a, me):
             a.params["PARTSTAT"] = "NEEDS-ACTION"
             a.params["RSVP"] = "TRUE"
 
@@ -498,7 +558,7 @@ def create(conn: Conn, calendar_id, title: str, start: str, end: str = "",
     url = urljoin(cal["url"], f"{uid}.ics")
     with _client(conn) as c:
         if guests:
-            _invite(event, _me(c, conn), guests)
+            _invite(event, _me(c, conn), _named(conn, guests))
         _put(c, url, parsed.to_ical(), new=True)
     _log(conn, "create", cal, url, event, "")
     out = {"created": _occurrence(event, cal, f"{uid}.ics", rule is not None, conn)}
@@ -543,7 +603,7 @@ def update(conn: Conn, calendar_id, event_id: str, title: str | None = None,
             if exceptions:
                 raise IcloudError("The guests of a series with changed single dates are not "
                                   "changed here - please use the Calendar app.")
-            _invite(master, me or _me(c, conn), guests)
+            _invite(master, me or _me(c, conn), _named(conn, guests))
         _set(master, "SEQUENCE", int(master.get("SEQUENCE", 0)) + 1)
         _stamp(master)
         parsed.add_missing_timezones()

@@ -5,7 +5,8 @@ CalDAV faked (fake_icloud.FakeCalDAV)."""
 
 import httpx
 import pytest
-from fake_icloud import HOME, ic  # noqa: F401 - the fixture
+from fake_carddav import cards  # noqa: F401 - the fixture
+from fake_icloud import HOME, SCHEDULER, ic  # noqa: F401 - the fixture
 from icalendar import Calendar
 
 from icloud_mcp import events, store, users
@@ -127,7 +128,7 @@ def _event(fakes, path):
 def _guests(event):
     found = event.get("ATTENDEE")
     found = found if isinstance(found, list) else [found]
-    return {str(a)[7:]: str(a.params.get("PARTSTAT")) for a in found}
+    return {str(a.params.get("EMAIL") or str(a)[7:]): str(a.params.get("PARTSTAT")) for a in found}
 
 
 def test_invite_from_the_preferred_address(conn, ic):  # noqa: F811
@@ -141,7 +142,8 @@ def test_invite_from_the_preferred_address(conn, ic):  # noqa: F811
         ("anja@muster.example", "accepted"), ("max@icloud.example", "needs-action"),
         ("lena@muster.example", "needs-action")]               # each once, never the person twice
     event = _event(ic, "/123/calendars/home/" + out["created"]["event_id"])
-    assert str(event["ORGANIZER"]) == "mailto:anja@muster.example"
+    assert str(event["ORGANIZER"]) == SCHEDULER                 # as iCloud keeps it
+    assert event["ORGANIZER"].params["EMAIL"] == "anja@muster.example"
     assert event["ORGANIZER"].params["CN"] == "Anja Muster"
     max_ = next(a for a in event["ATTENDEE"] if "max@" in str(a))
     assert max_.params["CN"] == "Max Muster" and max_.params["RSVP"] == "TRUE"
@@ -228,3 +230,48 @@ def test_a_rejected_sign_in_says_so(conn, ic):  # noqa: F811
     wrong = Conn(uid=conn.uid, address=conn.address, password="x" * 16, timezone=conn.timezone)
     with pytest.raises(IcloudError, match="rejected the sign-in"):
         events.calendar_list(wrong)
+
+
+def test_own_invitation_after_icloud_rewrote_the_organizer(conn, ic):  # noqa: F811
+    """iCloud keeps the organizer as a principal path once it has sent the
+    invitation; the next change must still see the person as organizer."""
+    cal = _allow_writing(conn)
+    events.update(conn, cal, "zahnarzt.ics", attendees=["max@icloud.example"])
+    path = "/123/calendars/home/zahnarzt.ics"
+    assert f":{SCHEDULER}" in ic.dav.objects[path][0]
+    out = events.update(conn, cal, "zahnarzt.ics", location="Praxis Dr. Muster")
+    assert out["updated"]["location"] == "Praxis Dr. Muster"
+    assert out["updated"]["organizer"] == "anja@muster.example"
+    assert [a["email"] for a in out["updated"]["attendees"]] == ["anja@muster.example",
+                                                                 "max@icloud.example"]
+    events.update(conn, cal, "zahnarzt.ics", attendees=["max@icloud.example", "lena@muster.example"])
+    event = _event(ic, path)
+    assert str(event["ORGANIZER"]) == SCHEDULER and len(event["ATTENDEE"]) == 3   # not twice
+    listed = next(e for e in events.list_events(conn, "2026-11-10")["events"]
+                  if e["title"] == "Zahnarzt")
+    assert listed["organizer"] == "anja@muster.example"
+    assert "cancellation" in events.delete(conn, cal, "zahnarzt.ics")["note"]
+
+    # an invitation from someone else is still refused, also with a principal path
+    family = _allow_writing(conn, "Familie")
+    ic.dav.objects["/123/calendars/family/essen.ics"] = (
+        ic.dav.objects["/123/calendars/family/essen.ics"][0].replace(
+            "ORGANIZER:mailto:oma@icloud.example",
+            "ORGANIZER;EMAIL=oma@icloud.example:/zZz-999/principal/"), '"3"')
+    with pytest.raises(IcloudError, match="invitation from oma@icloud.example"):
+        events.update(conn, family, "essen.ics", location="x")
+
+
+def test_guests_get_their_name_from_the_contacts(conn, ic, cards):  # noqa: F811
+    cal = _allow_writing(conn)
+    out = events.create(conn, cal, "Essen", "2026-11-14T19:00",
+                        attendees=["MAX@muster.example", "Erika M. <erika@muster.example>",
+                                   "kunden@stadtwerke.example", "fremd@example.org"])
+    names = {a["email"]: a["name"] for a in out["created"]["attendees"]}
+    assert names["MAX@muster.example"] == "Max Muster"
+    assert names["erika@muster.example"] == "Erika M."              # a given name wins
+    assert names["kunden@stadtwerke.example"] == "Stadtwerke Musterstadt"
+    assert names["fremd@example.org"] == ""
+    users.set_service(conn.uid, "contacts", False)                  # switched off: not asked
+    out = events.create(conn, cal, "Essen 2", "2026-11-15T19:00", attendees=["max@muster.example"])
+    assert {a["email"]: a["name"] for a in out["created"]["attendees"]}["max@muster.example"] == ""
